@@ -16,8 +16,8 @@
 
 definition(
         name: "Diskstation (Connect)",
-        namespace: "swanny",
-    author: "swanny",
+        namespace: "mkrapivner",
+    	author: "swanny",
         description: "Allows you to connect the cameras from the Synology Surveilence Station",
         category: "Safety & Security",
         iconUrl: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience.png",
