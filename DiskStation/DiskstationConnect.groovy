@@ -17,7 +17,7 @@
 definition(
         name: "Diskstation (Connect)",
         namespace: "mkrapivner",
-    	author: "swanny",
+        author: "swanny",
         description: "Allows you to connect the cameras from the Synology Surveilence Station",
         category: "Safety & Security",
         iconUrl: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience.png",
@@ -466,9 +466,9 @@ def locationHandler(evt) {
         {
             Map commandData = state.commandList.first()
 
-            //log.trace "Logging command " + bodyString
+            // log.trace "Logging command " + bodyString
 
-            //log.trace "master waiting on " + getUniqueCommand(commandData)
+            // log.trace "master waiting on " + getUniqueCommand(commandData)
             if (getUniqueCommand(commandData) == commandType)
             {
                 // types match between incoming and what we wanted, handle it
@@ -544,21 +544,11 @@ def locationHandler(evt) {
         // no master command waiting or not the one we wanted
         // is this a child message?
 
-        if (commandType != "") {
-            log.trace "event = ${description}"
-
-            // see who wants this type (commandType)
-            def commandInfo = getFirstChildCommand(commandType)
-
+        if (parsedEvent.tempImageKey) {
+            def commandInfo = getFirstChildCommand(getUniqueCommand("SYNO.SurveillanceStation.Camera", "GetSnapshot"))
             if (commandInfo != null) {
-                switch (commandType) {
-                    case getUniqueCommand("SYNO.SurveillanceStation.Camera", "GetSnapshot"):
-                        if (parsedEvent.bucket && parsedEvent.key){
-                            log.trace "saving image to device"
-                            commandInfo?.child?.putImageInS3(parsedEvent)
-                        }
-                        return finalizeChildCommand(commandInfo)
-                }
+                commandInfo?.child?.putImageInCarousel(parsedEvent)
+                return finalizeChildCommand(commandInfo)
             }
         }
 
@@ -727,6 +717,13 @@ private def parseEventMessage(String description) {
             def valueString = part.trim()
             if (valueString) {
                 event.requestId = valueString
+            }
+        }
+        else if (part.startsWith('tempImageKey')) {
+            part -= "tempImageKey:"
+            def valueString = part.trim()
+            if (valueString) {
+                event.tempImageKey = valueString
             }
         }
     }
