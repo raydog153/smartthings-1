@@ -1,8 +1,11 @@
-// use `pm2 start app.js` to start node serve
+// use `pm2 start dscam.js` to start node serve
 // then, `pm2 show 0` to show runnng app
-// `pm2 logs app` to show trailing logs
-// TODO: See what I need to do to have pm2 auto-start node.js on server reboot
-// TODO: Tutorial here: https://nodejs.org/zh-cn/knowledge/file-system/how-to-store-local-config-data/
+// `pm2 logs dscam` to show trailing logs
+// ===== IMPORTANT!!!!! ========
+// To auto-start pm2 on Synology reboot, use Control Panel -> Task Scheduler
+// Add a simple shell script there with `pm2 start dscam.js` command
+// =============================
+// TODO: pm2 utorial here: https://nodejs.org/zh-cn/knowledge/file-system/how-to-store-local-config-data/
 // TODO: `pm2 monit` mentioned "watch & reload". It sounds useful
 
 const express = require('express');
