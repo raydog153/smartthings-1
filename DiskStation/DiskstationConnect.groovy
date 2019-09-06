@@ -33,7 +33,8 @@ preferences {
 mappings {
     path("/DSNotify") {
         action: [
-                GET: "webNotifyCallback"
+                GET: "webNotifyCallback",
+                POST: "imageNotifyCallback"
         ]
     }
 }
@@ -294,65 +295,8 @@ def makeCameraModelKey(vendor, model) {
 
 /////////////////////////////////////
 
-def finalizeChildCommand(commandInfo) {
-    state.lastEventTime = commandInfo.time
-}
-
-def getFirstChildCommand(commandType) {
-    def commandInfo = null
-
-    // get event type to search for
-    def searchType = null
-    switch (commandType) {
-        case getUniqueCommand("SYNO.SurveillanceStation.Camera", "GetSnapshot"):
-            searchType = "takeImage"
-            break
-    }
-
-    if (searchType != null) {
-        def children = getChildDevices()
-        def bestTime = now()
-        def startTime = now() - 40000
-
-        if (state.lastEventTime != null) {
-            if (startTime <= state.lastEventTime) {
-                startTime = state.lastEventTime+1
-            }
-        }
-
-        //log.trace "startTime = ${startTime}, now = ${now()}"
-
-        children.each {
-            // get the events from the child
-            def events = it.eventsSince(new Date(startTime))
-            def typedEvents = events.findAll { it.name == searchType }
-
-            if (typedEvents) {
-                typedEvents.each { event ->
-                    def eventTime = event.date.getTime()
-                    //log.trace "eventTime = ${eventTime}"
-                    if (eventTime >= startTime && eventTime < bestTime) {
-                        // is it the oldest
-                        commandInfo = [:]
-                        commandInfo.child = it
-                        commandInfo.time = eventTime
-                        bestTime = eventTime
-                        //log.trace "bestTime = ${bestTime}"
-                    }
-                }
-            }
-        }
-    }
-    return commandInfo
-}
-
-/////////////////////////////////////
-
 // return a getUniqueCommand() equivalent value
 def determineCommandFromResponse(parsedEvent, bodyString, body) {
-    if (parsedEvent.bucket && parsedEvent.key) {
-        return getUniqueCommand("SYNO.SurveillanceStation.Camera", "GetSnapshot")
-    }
 
     if (body) {
         if (body.data) {
@@ -399,6 +343,18 @@ def doesCommandReturnData(uniqueCommand) {
 def locationHandler(evt) {
     def description = evt.description
     def hub = evt?.hubId
+
+    /*
+    log.debug "installedSmartAppId: ${evt.installedSmartAppId}"
+    log.debug "name: ${evt.name}"
+    log.debug "source: ${evt.source}"
+    log.debug "Is this event a state change? ${evt.isStateChange()}"
+    log.debug "event display name: ${evt.displayName}"
+    log.debug "The device id for this event: ${evt.deviceId}"
+    log.debug "The value of this event as a string: ${evt.value}"
+    log.debug "event raw description: ${evt.description}"
+       log.debug "event data: ${evt.data}"
+    */
 
     def parsedEvent = parseEventMessage(description)
     parsedEvent << ["hub":hub]
@@ -544,14 +500,6 @@ def locationHandler(evt) {
         // no master command waiting or not the one we wanted
         // is this a child message?
 
-        if (parsedEvent.tempImageKey) {
-            def commandInfo = getFirstChildCommand(getUniqueCommand("SYNO.SurveillanceStation.Camera", "GetSnapshot"))
-            if (commandInfo != null) {
-                commandInfo?.child?.putImageInCarousel(parsedEvent)
-                return finalizeChildCommand(commandInfo)
-            }
-        }
-
         // no one wants this type or unknown type
         if ((state.commandList.size() > 0) && (body != null))
         {
@@ -587,23 +535,6 @@ def locationHandler(evt) {
                 return
             } else {
                 // if we get here, we likely just had a success for a message we don't care about
-            }
-        }
-
-        // is this an empty GetSnapshot error?
-        if (parsedEvent.requestId && !parsedEvent.headers) {
-            def commandInfo = getFirstChildCommand(getUniqueCommand("SYNO.SurveillanceStation.Camera", "GetSnapshot"))
-            if (commandInfo) {
-                log.trace "take image command returned an error"
-                if ((state.lastErrorResend == null) || ((now() - state.lastErrorResend) > 15000)) {
-                    log.trace "resending to get real error message"
-                    state.lastErrorResend = now()
-                    state.doSnapshotResend = true
-                    sendDiskstationCommand(createCommandData("SYNO.SurveillanceStation.Camera", "GetSnapshot", "cameraId=${getDSCameraIDbyChild(commandInfo.child)}", 1))
-                } else {
-                    log.trace "not trying to resend again for more error info until later"
-                }
-                return
             }
         }
 
@@ -850,22 +781,23 @@ def createHubAction(Map commandData) {
     try {
         def url = createDiskstationURL(commandData)
         if (url != null) {
-            def acceptType = "application/json, text/plain, text/html, */*"
+            def acceptType = "*/*"
             if (commandData.acceptType) {
                 acceptType = commandData.acceptType
             }
 
+            def options = [:]
+
             def hubaction = new physicalgraph.device.HubAction(
-                    """GET ${url} HTTP/1.1\r\nHOST: ${ip}\r\nAccept: ${acceptType}\r\n\r\n""",
-                    physicalgraph.device.Protocol.LAN, "${deviceNetworkId}")
-            if (getUniqueCommand("SYNO.SurveillanceStation.Camera", "GetSnapshot") == getUniqueCommand(commandData)) {
-                if (state.doSnapshotResend) {
-                    state.doSnapshotResend = false
-                } else {
-                    hubaction.options = [outputMsgToS3:true]
-                }
-            }
-            log.trace "Requesting URL " + url
+                    [method: "GET",
+                     path: url,
+                     headers: [HOST: "${ip}"]
+                    ],
+                    deviceNetworkId,
+                    options
+            )
+
+            log.trace "Requesting URL " + url + ", options: ${hubaction.options}"
             return hubaction
         } else {
             return null
@@ -880,6 +812,7 @@ def createHubAction(Map commandData) {
 def sendDiskstationCommand(Map commandData) {
     def hubaction = createHubAction(commandData)
     if (hubaction) {
+        log.trace "Sending hub action: ${hubaction}"
         sendHubCommand(hubaction)
     }
 }
@@ -937,6 +870,78 @@ def finalizeDiskstationCommand() {
 
 private def clearDiskstationCommandQueue() {
     state.commandList.clear()
+}
+
+def requestSnapshot(deviceName) {
+    //log.trace "Inside requestSnapshot, deviceName: ${deviceName}"
+    def d = getChildDevice(deviceName)
+    def cameraId = d.getCameraID()
+    log.trace "Requesting snapshot from camera ID ${cameraId} (${deviceName})"
+    def snapshotUrl = "http://${userip}:${userport}"
+    def commandData = null
+    if ((d.takeStream != null) && (d.takeStream != "")){
+        // log.trace "take picture from camera ${cameraId} stream ${d.takeStream}"
+        commandData = createCommandData("SYNO.SurveillanceStation.Camera", "GetSnapshot", "cameraId=${cameraId}&camStm=${takeStream}", 4)
+    }
+    else {
+        // log.trace "take picture from camera ${cameraId} default stream"
+        commandData = createCommandData("SYNO.SurveillanceStation.Camera", "GetSnapshot", "cameraId=${cameraId}", 1)
+    }
+    snapshotUrl += createDiskstationURL(commandData)
+
+    // Prepare message for node.js server
+    try {
+        def httpMethod = "POST"
+        def reqHeader = ["HOST": "${userip}:21121",
+                         "Content-Type": "application/json"]
+        def reqQuery = null
+
+        def params = ["camera": deviceName,
+                      "snapshotUrl": snapshotUrl,
+                      "apiServerUrl": apiServerUrl("/api/token/${state.accessToken}/smartapps/installations/${app.id}/DSNotify")
+        ]
+        def reqBody = new groovy.json.JsonBuilder(params).toPrettyString()
+        def hubAction = new physicalgraph.device.HubAction(
+                [method: httpMethod,
+                 path: "/snapshot",
+                 headers: reqHeader,
+                 query: reqQuery,
+                 body: reqBody],
+                null
+        )
+        def requestId = hubAction.requestId
+        log.trace "Sending /snapshot command, requestId: ${requestId}, params: ${params}"
+        sendHubCommand(hubAction)
+    } catch (e) {
+        log.error "Caught exception sending command to node: ${e}"
+    }
+}
+
+def imageNotifyCallback() {
+    /*
+       log.debug ("In imageNotifyCallback, request: ${request}")
+    log.debug ("In imageNotifyCallback, request.data: ${request.data}")
+    log.debug ("In imageNotifyCallback, request.body: ${request.body}")
+    log.debug ("In imageNotifyCallback, request.headers: ${request.headers}")
+    */
+    def reqJSON = request.JSON?:null
+    log.trace ("In imageNotifyCallback, reqJSON: ${reqJSON}")
+    def snapshotBase64 = reqJSON.snapshot
+    if (snapshotBase64.startsWith("data:image/jpeg;base64,"))
+        snapshotBase64 -= "data:image/jpeg;base64,"
+    def bytes = new ByteArrayInputStream(snapshotBase64.decodeBase64())
+    def cameraName = reqJSON.camera
+    // log.debug ("Camera name: ${cameraName}")
+    def d = getChildDevice(cameraName)
+    d.publishPostedImage(bytes)
+    /*
+    log.debug ("In imageNotifyCallback, params: ${params}")
+    if (!reqJSON)
+    	reqJSON = params
+
+    log.debug ("In imageNotifyCallback, reqJSON: ${reqJSON}")
+	log.debug ("In imageNotifyCallback, reqJSON.data: ${reqJSON.data}")
+    */
 }
 
 def webNotifyCallback() {

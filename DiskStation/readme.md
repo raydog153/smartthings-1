@@ -44,3 +44,22 @@ Connect to your DiskStation:
 
 If you add new cameras to your system, go through the Diskstation (Connect) app again to add the new cameras. If you already set up motion detection, you do not need to do it again.
 
+
+## Snapshots
+- To get snapshots working, you will need to run a small web server app on your Synology server.
+- If you don't have node installed yet, install [node](https://nodejs.org/en/download/) on your Diskstation. You can do so from the Control Panel.
+- You may need to install some node modules. After node has been installed, run the following from the terminal:
+
+`npm install express`
+`npm install request`
+`npm install base64-img`
+- The JavaScript app can sometimes crash, so it is wise to run it under a monitoring app. I use `pm2`, but you can use whatever you want.
+
+### On your Diskstation:
+- Assuming you checked out the source code to `~/dscam`:
+`cd ~/dscam`
+`node dscam.js`
+You should see something like `Server listening on port 21121` on the console
+- If you have installed `pm2`, instead of starting `node dscam.js` directly, you can start the web server as follows:
+`cd ~/dscam`
+`pm2 start dscam`

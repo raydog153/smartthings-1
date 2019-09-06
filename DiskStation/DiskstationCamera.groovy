@@ -180,14 +180,8 @@ metadata {
     }
 }
 
-def putImageInCarousel(parsedEvent) {
-    if (parsedEvent.tempImageKey) {
-        try {
-            storeTemporaryImage(parsedEvent.tempImageKey, getPictureName())
-        } catch (Exception e) {
-            log.error ("Could not put image in carousel. Error: " + e)
-        }
-    }
+def publishPostedImage(bytes) {
+    storeImage(getPictureName(), bytes)
 }
 
 // parse events into attributes
@@ -205,26 +199,8 @@ def getCameraID() {
 
 // handle commands
 def take() {
-    try {
-        def lastNum = device.currentState("takeImage")?.integerValue
-        sendEvent(name: "takeImage", value: "${lastNum+1}")
-    }
-    catch(Exception e) {
-        log.error e
-        sendEvent(name: "takeImage", value: "0")
-    }
-    def hubAction = null
-    def cameraId = getCameraID()
-    if ((takeStream != null) && (takeStream != "")){
-        log.trace "take picture from camera ${cameraId} stream ${takeStream}"
-        hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.Camera", "GetSnapshot", "cameraId=${cameraId}&camStm=${takeStream}", 4)
-    }
-    else {
-        log.trace "take picture from camera ${cameraId} default stream"
-        hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.Camera", "GetSnapshot", "cameraId=${cameraId}", 1)
-    }
-    log.debug "take command is: ${hubAction}"
-    hubAction
+    log.trace "Requesting snapshot"
+    parent.requestSnapshot(device.deviceNetworkId)
 }
 
 def left() {
@@ -458,10 +434,8 @@ def initChild(Map capabilities)
 
 def queueDiskstationCommand_Child(String api, String command, String params, int version) {
     def commandData = parent.createCommandData(api, command, params, version)
-
-    log.trace "sending " + commandData.command
-
     def hubAction = parent.createHubAction(commandData)
+    log.trace "sending " + commandData.command + ", options: " + hubAction.options?:null
     hubAction
 }
 
