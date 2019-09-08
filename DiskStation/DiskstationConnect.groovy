@@ -925,23 +925,25 @@ def imageNotifyCallback() {
     log.debug ("In imageNotifyCallback, request.headers: ${request.headers}")
     */
     def reqJSON = request.JSON?:null
-    log.trace ("In imageNotifyCallback, reqJSON: ${reqJSON}")
-    def snapshotBase64 = reqJSON.snapshot
-    if (snapshotBase64.startsWith("data:image/jpeg;base64,"))
-        snapshotBase64 -= "data:image/jpeg;base64,"
-    def bytes = new ByteArrayInputStream(snapshotBase64.decodeBase64())
-    def cameraName = reqJSON.camera
-    // log.debug ("Camera name: ${cameraName}")
-    def d = getChildDevice(cameraName)
-    d.publishPostedImage(bytes)
-    /*
-    log.debug ("In imageNotifyCallback, params: ${params}")
-    if (!reqJSON)
-    	reqJSON = params
-
-    log.debug ("In imageNotifyCallback, reqJSON: ${reqJSON}")
-	log.debug ("In imageNotifyCallback, reqJSON.data: ${reqJSON.data}")
-    */
+    log.trace("In imageNotifyCallback, reqJSON: ${reqJSON}")
+    if (reqJSON.containsKey("notification")) {
+        // send push notification
+        sendPush("DSCam web server says: ${reqJSON.notification}")
+    } else if (reqJSON.containsKey("error")) {
+        // auth again
+        // TODO: re-send the snapshot request after successful auth
+        log.trace ("logging in again")
+        executeLoginCommand()
+    } else {
+        def snapshotBase64 = reqJSON.snapshot
+        if (snapshotBase64.startsWith("data:image/jpeg;base64,"))
+            snapshotBase64 -= "data:image/jpeg;base64,"
+        def bytes = new ByteArrayInputStream(snapshotBase64.decodeBase64())
+        def cameraName = reqJSON.camera
+        // log.debug ("Camera name: ${cameraName}")
+        def d = getChildDevice(cameraName)
+        d.publishPostedImage(bytes)
+    }
 }
 
 def webNotifyCallback() {
