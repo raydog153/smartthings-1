@@ -118,7 +118,7 @@ def diskstationDiscovery()
 
     return dynamicPage(name:"diskstationDiscovery", title:"Connect with your Diskstation!", nextPage:"cameraDiscovery", uninstall: true){
         section("Please enter your local network DiskStation information:") {
-            input "userip", "text", title:"ip address", defaultValue:"192.168.1.99"
+            input "userip", "text", title:"ip address", defaultValue:"192.168.1.100"
             input "userport", "text", title:"http port", defaultValue:"5000"
         }
         section("Please enter your DiskStation login information:") {
@@ -243,6 +243,7 @@ def getCameraCapabilities() {
 
 // takes in object from state.SSCameraList
 def updateCameraInfo(camera) {
+    log.trace "Updating camera info for Camera ID " + camera.id
     def vendor = camera.vendor.replaceAll(" ", "%20")
     def model = camera.model.replaceAll(" ", "%20")
     if ((model == "Define") && (vendor = "User")) {
@@ -260,7 +261,6 @@ def updateCameraInfo(camera) {
         // standard camera
         //queueDiskstationCommand("SYNO.SurveillanceStation.Camera", "GetCapability", "vendor=${vendor}&model=${model}", 1)
         queueDiskstationCommand("SYNO.SurveillanceStation.Camera", "GetCapabilityByCamId", "cameraId=${camera.id}", 4)
-
         queueDiskstationCommand("SYNO.SurveillanceStation.PTZ", "ListPreset", "cameraId=${camera.id}", 1)
         queueDiskstationCommand("SYNO.SurveillanceStation.PTZ", "ListPatrol", "cameraId=${camera.id}", 1)
     }
@@ -539,7 +539,7 @@ def locationHandler(evt) {
         }
 
         // why are we here?
-        log.trace "Did not use " + bodyString
+        log.trace "Did not use [" + bodyString + "]"
     }
 }
 
@@ -597,6 +597,7 @@ private def parseEventMessage(Map event) {
 }
 
 private def parseEventMessage(String description) {
+    log.debug "description = " + description
     def event = [:]
     def parts = description.split(',')
     parts.each { part ->
@@ -833,7 +834,7 @@ def createCommandData(String api, String command, String params, int version) {
 }
 
 def queueDiskstationCommand(String api, String command, String params, int version) {
-
+    log.trace "queing command " + command
     def commandData = createCommandData(api, command, params, version)
 
     if (doesCommandReturnData(getUniqueCommand(commandData))) {
@@ -953,26 +954,39 @@ def webNotifyCallback() {
         state.motionTested = true
         log.debug "Test message received"
     }
+    if (params?.msg?.contains("Motion in")) {
+        log.debug "motion callback message: ${params?.msg}"
+    }
 
     // Camera Foscam1 on DiskStation has detected motion
+    // The default SMS message is in form "Camera Foscam1 on DiskStation has detected motion"
+    // The install instructions require us to change this to be of the form "Motion in Foscam1"
+    // Note: Not sure why this was not designed to use the default, perhaps due to length,
+    //   regardless for now adding in code to support either. In future perhaps this should be configurable,
+    //   and add debug logging to make it easier to detect misconfiguration, as the SMS test does not validate a motiond SMS
+    log.trace "motion callback"
     def motionMatch = (params?.msg =~ /Motion in (.*)/)
+    if (!motionMatch) { motionMatch = (params?.msg =~ /Camera (.*) on (.*) has detected motion/) }
     if (motionMatch) {
         def thisCamera = state.SSCameraList.find { it.newName.toString() == motionMatch[0][1].toString() }
         if (thisCamera) {
             def cameraDNI = createCameraDNI(thisCamera)
             if (cameraDNI) {
+                log.debug "found camera for motion callback: ${cameraDNI}, last motion timestamp, ${state.lastMotion[cameraDNI]}"
                 if ((state.lastMotion[cameraDNI] == null) || ((now() - state.lastMotion[cameraDNI]) > 1000)) {
                     state.lastMotion[cameraDNI] = now()
 
                     def d = getChildDevice(cameraDNI)
                     if (d && d.currentValue("motion") == "inactive") {
-                        log.trace "motion on child device: " + d
+                        log.trace "Motion detected on: " + d
                         d.motionActivated()
                         if (d.currentValue("autoTake") == "on") {
-                            log.trace "taking motion image for child"
+                            log.trace "AutoTake is on. Taking image for: " + d
                             d.take()
                         }
                         handleMotion()
+                    } else {
+                        log.trace "Doing nothing. Motion event received for " + d + " which is already active."
                     }
                 }
             }
@@ -992,6 +1006,7 @@ def checkMotionDeactivate(child) {
         }
     }
     catch (Exception err) {
+        log.error(err)
         timeRemaining = 0
     }
 
