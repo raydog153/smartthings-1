@@ -208,7 +208,7 @@ def getDSInfo() {
     state.getDSinfo = false
     state.SSCameraList = null
     state.error = ""
-    state.api = ["SYNO.API.Info":[path:"query.cgi",minVersion:1,maxVersion:1]]
+    state.api = ["SYNO.API.Info":[path:"query.cgi",minVersion:1,maxVersion:1],"SYNO.SurveillanceStation.HomeMode":[path:"entry.cgi",minVersion:1,maxVersion:1]]
     state.lastEventTime = null
 
     clearDiskstationCommandQueue()
@@ -326,6 +326,7 @@ def doesCommandReturnData(uniqueCommand) {
     switch (uniqueCommand) {
         case getUniqueCommand("SYNO.API.Auth", "Login"):
         case getUniqueCommand("SYNO.API.Info", "Query"):
+        case getUniqueCommand("SYNO.SurveillanceStation.HomeMode", "Switch"):
         case getUniqueCommand("SYNO.SurveillanceStation.Camera", "List"):
         case getUniqueCommand("SYNO.SurveillanceStation.Camera", "GetCapability"):
         case getUniqueCommand("SYNO.SurveillanceStation.Camera", "GetCapabilityByCamId"):
@@ -696,6 +697,9 @@ def initialize() {
     state.subscribe = false
     state.getDSinfo = true
 
+    // subscribe (presence1, "presence.present", presenceHandler)
+    // subscribe (presence1, "presence.not present", presenceHandler)
+
     state.lastMotion = [:]
 
     if (selectedCameras) {
@@ -707,6 +711,25 @@ def initialize() {
         subscribe(location, null, locationHandler, [filterEvents:false])
         state.subscribe = true
     }
+}
+
+// Adding in future support of setting HomeMode based on motion or presence
+def presenceHandler(evt) {
+    log.debug "$evt.name: $evt.value, $messageText"
+
+    def homeMode = false 
+
+    if (evt.value == "present") {
+    	log.debug "we are now present"
+        homeMode = true
+        }
+    if (evt.value == "not present") {
+    	log.debug "we are no longer present"
+        homeMode = false
+        }
+
+    queueDiskstationCommand("SYNO.SurveillanceStation.HomeMode", "Switch", "on=${homeMode}", 1)
+    //http://192.168.1.100:5000/webapi/entry.cgi?api=SYNO.SurveillanceStation.HomeMode&version=1&method=Switch&on=true&_sid=<SID>  home mode on
 }
 
 def uninstalled() {
