@@ -64,9 +64,17 @@ metadata {
         // TODO: define status and reply messages here
     }
 
+    preferences {
+        input "takeStream", "number", title: "Stream to capture image from",
+                description: "Leave blank unless want to use another stream.", defaultValue: "",
+                required: false, displayDuringSetup: true
+    }
+
     tiles {
-        standardTile("camera", "device.image", width: 1, height: 1, canChangeIcon: false, inactiveLabel: true, canChangeBackground: true) {
-            state "default", label: "", action: "", icon: "st.camera.dropcam-centered", backgroundColor: "#FFFFFF"
+        standardTile("camera", "device.motion", width: 1, height: 1, canChangeIcon: false, inactiveLabel: true, canChangeBackground: true) {
+            state("default", label: "no motion'", action: "", icon: "st.motion.motion.inactive", backgroundColor: "#FFFFFF")
+            state("active", label:'motion', action: "", icon:"st.motion.motion.active", backgroundColor:"#53a7c0")
+            state("inactive", label:'no motion', action: "", icon:"st.motion.motion.inactive", backgroundColor:"#FFFFFF")
         }
 
         carouselTile("cameraDetails", "device.image", width: 3, height: 2) { }
@@ -171,12 +179,6 @@ metadata {
                  "zoomIn", "up", "zoomOut",
                  "left", "home", "right",
                  "refresh", "down", "auto"])
-    }
-
-    preferences {
-        input "takeStream", "number", title: "Stream to capture image from",
-                description: "Leave blank unless want to use another stream.", defaultValue: "",
-                required: false, displayDuringSetup: true
     }
 }
 
