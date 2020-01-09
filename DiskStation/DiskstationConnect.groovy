@@ -984,7 +984,7 @@ def webNotifyCallback() {
                             log.trace "AutoTake is on. Taking image for: " + d
                             d.take()
                         }
-                        handleMotion()
+                        doAndScheduleHandleMotion()
                     } else {
                         log.trace "Doing nothing. Motion event received for " + d + " which is already active."
                     }
@@ -994,6 +994,36 @@ def webNotifyCallback() {
     }
 }
 
+// runIn appears to be unreliable. For backup, schedule a cleanup every 5 minutes
+def doAndScheduleHandleMotion() {
+	handleMotionCleanup()
+    // This orverwrites any other scheduled event.  We'll only get one extra call to handleMotion this way.
+	runEvery5Minutes( "handleMotionCleanup" )
+}
+
+// Deactivate the cameras is the motion event is old.  Runs itself again in the least time left.
+def handleMotionCleanup() {
+    def children = getChildDevices()
+    def nextTimeDefault = 120000; //1000000
+    def nextTime = nextTimeDefault;
+    log.debug "handleMotionCleanup"
+
+    children.each {
+    	def newTime = checkMotionDeactivate(it)
+        if ((newTime != null) && (newTime < nextTime)) {
+        	nextTime = newTime
+        }
+    }
+
+	//log.debug "handleMotion nextTime = ${nextTime}"
+	if (nextTime != nextTimeDefault){
+    	log.trace "nextTime = " + nextTime
+        nextTime = (nextTime >= 25) ? nextTime : 25
+		runIn((nextTime+5).toInteger(), "handleMotionCleanup")
+    }
+}
+
+// Determines the time remaining before deactivation for a camera and deactivates if it is up.
 def checkMotionDeactivate(child) {
     def timeRemaining = null
     def cameraDNI = child.deviceNetworkId
@@ -1020,26 +1050,6 @@ def checkMotionDeactivate(child) {
         log.debug "checkMotionDeactivate ${cameraDNI} deactivated"
     }
     return timeRemaining
-}
-
-def handleMotion() {
-    def children = getChildDevices()
-    def nextTime = 1000000;
-    log.debug "handleMotion"
-
-    children.each {
-        def newTime = checkMotionDeactivate(it)
-        if ((newTime != null) && (newTime < nextTime)) {
-            nextTime = newTime
-        }
-    }
-
-    log.debug "handleMotion nextTime = ${nextTime}"
-    if ((nextTime != 1000000)){
-        log.trace "nextTime = " + nextTime
-        nextTime = (nextTime >= 25) ? nextTime : 25
-        runIn((nextTime+5).toInteger(), "handleMotion")
-    }
 }
 
 /////////CHILD DEVICE METHODS
