@@ -293,11 +293,67 @@ def makeCameraModelKey(vendor, model) {
     return (vendor + "_" + model)
 }
 
+def finalizeChildCommand(commandInfo) {
+    state.lastEventTime = commandInfo.time
+}
+
+def getFirstChildCommand(commandType) {
+    def commandInfo = null
+
+    // get event type to search for
+    def searchType = null
+    switch (commandType) {
+        case getUniqueCommand("SYNO.SurveillanceStation.Camera", "GetSnapshot"):
+            searchType = "takeImage"
+            break
+    }
+
+    if (searchType != null) {
+        def children = getChildDevices()
+        def bestTime = now()
+        def startTime = now() - 40000
+
+        if (state.lastEventTime != null) {
+            if (startTime <= state.lastEventTime) {
+                startTime = state.lastEventTime+1
+            }
+        }
+
+        //log.trace "startTime = ${startTime}, now = ${now()}"
+
+        children.each {
+            // get the events from the child
+            def events = it.eventsSince(new Date(startTime))
+            def typedEvents = events.findAll { it.name == searchType }
+
+            if (typedEvents) {
+                typedEvents.each { event ->
+                    def eventTime = event.date.getTime()
+                    //log.trace "eventTime = ${eventTime}"
+                    if (eventTime >= startTime && eventTime < bestTime) {
+                        // is it the oldest
+                        commandInfo = [:]
+                        commandInfo.child = it
+                        commandInfo.time = eventTime
+                        bestTime = eventTime
+                        //log.trace "bestTime = ${bestTime}"
+                    }
+                }
+            }
+        }
+    }
+    return commandInfo
+}
+
 /////////////////////////////////////
 
 // return a getUniqueCommand() equivalent value
 def determineCommandFromResponse(parsedEvent, bodyString, body) {
-
+    log.trace "determineCommandFromResponse invoked"
+    if (parsedEvent.bucket && parsedEvent.key) {
+        return getUniqueCommand("SYNO.SurveillanceStation.Camera", "GetSnapshot")
+    }
+    
     if (body) {
         if (body.data) {
             // has data
@@ -500,6 +556,14 @@ def locationHandler(evt) {
         }
         // no master command waiting or not the one we wanted
         // is this a child message?
+        if (parsedEvent.tempImageKey) {
+        	log.debug "paresed event and found tempImageKey"
+            def commandInfo = getFirstChildCommand(getUniqueCommand("SYNO.SurveillanceStation.Camera", "GetSnapshot"))
+            if (commandInfo != null) {
+                commandInfo?.child?.putImageInCarousel(parsedEvent)
+                return finalizeChildCommand(commandInfo)
+            }
+        }
 
         // no one wants this type or unknown type
         if ((state.commandList.size() > 0) && (body != null))
@@ -536,6 +600,24 @@ def locationHandler(evt) {
                 return
             } else {
                 // if we get here, we likely just had a success for a message we don't care about
+            }
+        }
+        
+        // is this an empty GetSnapshot error?
+        if (parsedEvent.requestId && !parsedEvent.headers) {
+            log.trace "parsed event with no headers"
+            def commandInfo = getFirstChildCommand(getUniqueCommand("SYNO.SurveillanceStation.Camera", "GetSnapshot"))
+            if (commandInfo) {
+                log.trace "take image command returned an error"
+                if ((state.lastErrorResend == null) || ((now() - state.lastErrorResend) > 15000)) {
+                    log.trace "resending to get real error message"
+                    state.lastErrorResend = now()
+                    state.doSnapshotResend = true
+                    sendDiskstationCommand(createCommandData("SYNO.SurveillanceStation.Camera", "GetSnapshot", "cameraId=${getDSCameraIDbyChild(commandInfo.child)}", 1))
+                } else {
+                    log.trace "not trying to resend again for more error info until later"
+                }
+                return
             }
         }
 
@@ -797,7 +879,7 @@ def createDiskstationURL(Map commandData) {
     return null
 }
 
-def createHubAction(Map commandData) {
+def createHubAction(Map commandData, options) {
 
     String deviceNetworkId = getDeviceId(userip, userport)
     String ip = userip + ":" + userport
@@ -810,7 +892,7 @@ def createHubAction(Map commandData) {
                 acceptType = commandData.acceptType
             }
 
-            def options = [:]
+            if (!options) options = [:]
 
             def hubaction = new physicalgraph.device.HubAction(
                     [method: "GET",
@@ -834,7 +916,7 @@ def createHubAction(Map commandData) {
 }
 
 def sendDiskstationCommand(Map commandData) {
-    def hubaction = createHubAction(commandData)
+    def hubaction = createHubAction(commandData, [:])
     if (hubaction) {
         log.trace "Sending hub action: ${hubaction}"
         sendHubCommand(hubaction)
@@ -971,14 +1053,14 @@ def imageNotifyCallback() {
 }
 
 def webNotifyCallback() {
-    log.trace "motion callback"
+    log.trace "MotionCallback, notification recieved"
 
     if (params?.msg?.contains("Test message from Synology")) {
         state.motionTested = true
-        log.debug "Test message received"
+        log.debug "MotionCallback, Test message received"
     }
     if (params?.msg?.contains("Motion in")) {
-        log.debug "motion callback message: ${params?.msg}"
+        log.debug "MotionCallback, callback message: ${params?.msg}"
     }
 
     // Camera Foscam1 on DiskStation has detected motion
@@ -987,32 +1069,41 @@ def webNotifyCallback() {
     // Note: Not sure why this was not designed to use the default, perhaps due to length,
     //   regardless for now adding in code to support either. In future perhaps this should be configurable,
     //   and add debug logging to make it easier to detect misconfiguration, as the SMS test does not validate a motiond SMS
-    log.trace "motion callback"
     def motionMatch = (params?.msg =~ /Motion in (.*)/)
-    if (!motionMatch) { motionMatch = (params?.msg =~ /Camera (.*) on (.*) has detected motion/) }
-    if (motionMatch) {
-        def thisCamera = state.SSCameraList.find { it.newName.toString() == motionMatch[0][1].toString() }
+    log.trace "MotionCallback, detected motion in message ${motionMatch[0]}"
+    if (!motionMatch[0]) {
+    	motionMatch = (params?.msg =~ /Camera (.*) on (.*) has detected motion/)
+    	log.trace "MotionCallback, detected motion in message using old SMS regex ${motionMatch[0]}"
+    }
+    if (motionMatch[0]) {
+    	log.trace "MotionCallback, searching for camera ${motionMatch[0][1]}"
+        def thisCamera = state.SSCameraList.find {
+            //log.trace "MotionCallback, camera lookup ${it.newName.toString()} match ${(it.newName.toString() == motionMatch[0][1].toString())}"
+        	it.newName.toString() == motionMatch[0][1].toString()
+        }
         if (thisCamera) {
             def cameraDNI = createCameraDNI(thisCamera)
             if (cameraDNI) {
-                log.debug "found camera for motion callback: ${cameraDNI}, last motion timestamp, ${state.lastMotion[cameraDNI]}"
+                log.debug "MotionCallback, found camera which triggered motion: ${cameraDNI}, last motion timestamp: ${state.lastMotion[cameraDNI]}"
                 if ((state.lastMotion[cameraDNI] == null) || ((now() - state.lastMotion[cameraDNI]) > 1000)) {
                     state.lastMotion[cameraDNI] = now()
 
                     def d = getChildDevice(cameraDNI)
                     if (d && d.currentValue("motion") == "inactive") {
-                        log.trace "Motion detected on: " + d
+                        log.trace "MotionCallback, motion detected on: " + d
                         d.motionActivated()
                         if (d.currentValue("autoTake") == "on") {
-                            log.trace "AutoTake is on. Taking image for: " + d
+                            log.trace "MotionCallback, AutoTake is on. Taking image for: " + d
                             d.take()
                         }
                         doAndScheduleHandleMotion()
                     } else {
-                        log.trace "Doing nothing. Motion event received for " + d + " which is already active."
+                        log.trace "MotionCallback, doing nothing. Motion event received for " + d + " which is already active."
                     }
                 }
             }
+        } else {
+        	log.trace "MotionCallback, doing nothing. Camera could not be found for: ${motionMatch[0][1]}"
         }
     }
 }
