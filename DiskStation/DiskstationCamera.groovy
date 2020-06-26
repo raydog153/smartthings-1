@@ -244,49 +244,49 @@ def take() {
 def left() {
     log.trace "DS Cam: send command to move left"
     def cameraId = getCameraID()
-    def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.PTZ", "Move", "cameraId=${cameraId}&direction=left", 1)
+    def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.PTZ", "Move", "cameraId=${cameraId}&direction=left", 1, [:])
     hubAction
 }
 
 def right() {
     log.trace "DS Cam: send command to move right"
     def cameraId = getCameraID()
-    def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.PTZ", "Move", "cameraId=${cameraId}&direction=right", 1)
+    def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.PTZ", "Move", "cameraId=${cameraId}&direction=right", 1, [:])
     hubAction
 }
 
 def up() {
     log.trace "DS Cam: send command to move up"
     def cameraId = getCameraID()
-    def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.PTZ", "Move", "cameraId=${cameraId}&direction=up", 1)
+    def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.PTZ", "Move", "cameraId=${cameraId}&direction=up", 1, [:])
     hubAction
 }
 
 def down() {
     log.trace "DS Cam: send command to move down"
     def cameraId = getCameraID()
-    def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.PTZ", "Move", "cameraId=${cameraId}&direction=down", 1)
+    def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.PTZ", "Move", "cameraId=${cameraId}&direction=down", 1, [:])
     hubAction
 }
 
 def zoomIn() {
     log.trace "DS Cam: send command to zoomIn"
     def cameraId = getCameraID()
-    def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.PTZ", "Zoom", "cameraId=${cameraId}&control=in", 1)
+    def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.PTZ", "Zoom", "cameraId=${cameraId}&control=in", 1, [:])
     hubAction
 }
 
 def zoomOut() {
     log.trace "DS Cam: send command to zoomOut"
     def cameraId = getCameraID()
-    def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.PTZ", "Zoom", "cameraId=${cameraId}&control=out", 1)
+    def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.PTZ", "Zoom", "cameraId=${cameraId}&control=out", 1, [:])
     hubAction
 }
 
 def home() {
     log.trace "DS Cam: send 'home' position command"
     def cameraId = getCameraID()
-    def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.PTZ", "Move", "cameraId=${cameraId}&direction=home", 1)
+    def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.PTZ", "Move", "cameraId=${cameraId}&direction=home", 1, [:])
     hubAction
 }
 
@@ -318,7 +318,7 @@ def presetgo() {
     def presetIndex = state.curPresetIndex
     def presetNum = parent.getPresetId(this, presetIndex)
     if (presetNum != null) {
-        def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.PTZ", "GoPreset", "cameraId=${cameraId}&presetId=${presetNum}", 1)
+        def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.PTZ", "GoPreset", "cameraId=${cameraId}&presetId=${presetNum}", 1, [:])
         return hubAction
     }
 }
@@ -329,7 +329,7 @@ def presetGoName(name) {
     def presetNum = parent.getPresetIdByString(this, name);
 
     if (presetNum != null) {
-        def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.PTZ", "GoPreset", "cameraId=${cameraId}&presetId=${presetNum}", 1)
+        def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.PTZ", "GoPreset", "cameraId=${cameraId}&presetId=${presetNum}", 1, [:])
         return hubAction
     }
 }
@@ -362,7 +362,7 @@ def patrolgo() {
     def patrolIndex = state.curPatrolIndex
     def patrolNum = parent.getPatrolId(this, patrolIndex)
     if (patrolNum != null) {
-        def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.PTZ", "RunPatrol", "cameraId=${cameraId}&patrolId=${patrolNum}", 2)
+        def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.PTZ", "RunPatrol", "cameraId=${cameraId}&patrolId=${patrolNum}", 2, [:])
         return hubAction
     }
 }
@@ -373,7 +373,7 @@ def patrolGoName(name) {
     def patrolNum = parent.getPatrolIdByString(this, name);
 
     if (patrolNum != null) {
-        def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.PTZ", "RunPatrol", "cameraId=${cameraId}&patrolId=${patrolNum}", 2)
+        def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.PTZ", "RunPatrol", "cameraId=${cameraId}&patrolId=${patrolNum}", 2, [:])
         return hubAction
     }
 }
@@ -395,14 +395,14 @@ def refresh() {
 def on() {
     log.trace "DS Cam: start recording"
     def cameraId = getCameraID()
-    def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.ExternalRecording", "Record", "cameraId=${cameraId}&action=start", 2)
+    def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.ExternalRecording", "Record", "cameraId=${cameraId}&action=start", 2, [:])
     hubAction
 }
 
 def off() {
     log.trace "DS Cam: stop recording"
     def cameraId = getCameraID()
-    def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.ExternalRecording", "Record", "cameraId=${cameraId}&action=stop", 2)
+    def hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.ExternalRecording", "Record", "cameraId=${cameraId}&action=stop", 2, [:])
     hubAction
 }
 
