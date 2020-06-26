@@ -215,7 +215,7 @@ def getCameraID() {
 def take() {
     log.trace "Requesting snapshot"
     def nodeHack = false
-    if (nodeHack) {
+    if (!nodeHack) {
         try {
             def lastNum = device.currentState("takeImage")?.integerValue
             sendEvent(name: "takeImage", value: "${lastNum+1}")
@@ -228,11 +228,11 @@ def take() {
         def cameraId = getCameraID()
         if ((takeStream != null) && (takeStream != "")){
             log.trace "take picture from camera ${cameraId} stream ${takeStream}"
-            hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.Camera", "GetSnapshot", "cameraId=${cameraId}&camStm=${takeStream}", 4)
+            hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.Camera", "GetSnapshot", "cameraId=${cameraId}&camStm=${takeStream}", 4, [outputMsgToS3:true])
         }
         else {
             log.trace "take picture from camera ${cameraId} default stream"
-            hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.Camera", "GetSnapshot", "cameraId=${cameraId}", 1)
+            hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.Camera", "GetSnapshot", "cameraId=${cameraId}", 1, [outputMsgToS3:true])
         }
         log.debug "take command is: ${hubAction}"
         hubAction
@@ -470,9 +470,9 @@ def initChild(Map capabilities)
     sendEvent(name: "takeImage", value: "0")
 }
 
-def queueDiskstationCommand_Child(String api, String command, String params, int version) {
+def queueDiskstationCommand_Child(String api, String command, String params, int version, options) {
     def commandData = parent.createCommandData(api, command, params, version)
-    def hubAction = parent.createHubAction(commandData)
+    def hubAction = parent.createHubAction(commandData, options)
     log.trace "sending " + commandData.command + ", options: " + hubAction.options?:null
     hubAction
 }
