@@ -1086,19 +1086,23 @@ def webNotifyCallback() {
             if (cameraDNI) {
                 log.debug "MotionCallback, found camera which triggered motion: ${cameraDNI}, last motion timestamp: ${state.lastMotion[cameraDNI]}"
                 if ((state.lastMotion[cameraDNI] == null) || ((now() - state.lastMotion[cameraDNI]) > 1000)) {
-                    state.lastMotion[cameraDNI] = now()
 
                     def d = getChildDevice(cameraDNI)
-                    if (d && d.currentValue("motion") == "inactive") {
-                        log.trace "MotionCallback, motion detected on: " + d
-                        d.motionActivated()
-                        if (d.currentValue("autoTake") == "on") {
-                            log.trace "MotionCallback, AutoTake is on. Taking image for: " + d
-                            d.take()
-                        }
-                        doAndScheduleHandleMotion()
+                    if (d) {
+                        if (d.currentValue("motion") == "inactive" || (d.currentValue("motion") != "inactive" && state.lastMotion[cameraDNI] == null)) {
+                        	log.trace "MotionCallback, motion detected on: " + d
+                        	d.motionActivated()
+                        	if (d.currentValue("autoTake") == "on") {
+                            	log.trace "MotionCallback, AutoTake is on. Taking image for: " + d
+                            	d.take()
+                        	}
+                            state.lastMotion[cameraDNI] = now()
+                        	doAndScheduleHandleMotion()
+                    	} else {
+                        	log.trace "MotionCallback, doing nothing. Motion event received for " + d + " which is already active."
+                    	}
                     } else {
-                        log.trace "MotionCallback, doing nothing. Motion event received for " + d + " which is already active."
+        				log.trace "MotionCallback, doing nothing. Child device could not be found for: ${motionMatch[0][1]}"
                     }
                 }
             }
@@ -1117,10 +1121,10 @@ def doAndScheduleHandleMotion() {
 
 // Deactivate the cameras is the motion event is old.  Runs itself again in the least time left.
 def handleMotionCleanup() {
+    log.debug "handleMotionCleanup"
     def children = getChildDevices()
     def nextTimeDefault = 120000; //1000000
     def nextTime = nextTimeDefault;
-    log.debug "handleMotionCleanup"
 
     children.each {
     	def newTime = checkMotionDeactivate(it)
