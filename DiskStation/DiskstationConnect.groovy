@@ -351,12 +351,14 @@ def getFirstChildCommand(commandType) {
 def determineCommandFromResponse(parsedEvent, bodyString, body) {
     log.trace "determineCommandFromResponse invoked"
     if (parsedEvent.bucket && parsedEvent.key) {
+        log.trace "determineCommandFromResponse GetSnapshot response"
         return getUniqueCommand("SYNO.SurveillanceStation.Camera", "GetSnapshot")
     }
     
     if (body) {
         if (body.data) {
             // has data
+            log.trace "determineCommandFromResponse found body"
             if (body.data.sid != null) { return getUniqueCommand("SYNO.API.Auth", "Login") }
             if (bodyString.contains("maxVersion")) { return getUniqueCommand("SYNO.API.Info", "Query") }
             if (body.data.cameras != null) { return getUniqueCommand("SYNO.SurveillanceStation.Camera", "List") }
@@ -374,6 +376,7 @@ def determineCommandFromResponse(parsedEvent, bodyString, body) {
             }
         }
     }
+    log.trace "determineCommandFromResponse unknown command"
 
     return ""
 }
@@ -418,6 +421,7 @@ def locationHandler(evt) {
 
     if ((parsedEvent.ip == convertIPtoHex(userip)) && (parsedEvent.port == convertPortToHex(userport)))
     {
+        log.debug "locationHandler event description = " + description
         def bodyString = ""
         def body = null
 
@@ -680,7 +684,7 @@ private def parseEventMessage(Map event) {
 }
 
 private def parseEventMessage(String description) {
-    log.debug "description = " + description
+    //log.debug "description = " + description
     def event = [:]
     def parts = description.split(',')
     parts.each { part ->
@@ -915,6 +919,37 @@ def createHubAction(Map commandData, options) {
     return null
 }
 
+def createHubActionLocal(Map commandData, options) {
+
+    String deviceNetworkId = getDeviceId(userip, userport)
+    String ip = userip + ":" + userport
+
+    try {
+        def url = createDiskstationURL(commandData)
+        if (url != null) {
+            def acceptType = "*/*"
+            if (commandData.acceptType) {
+                acceptType = commandData.acceptType
+            }
+
+            if (!options) options = [:]
+
+            def hubaction = new physicalgraph.device.HubAction(
+                    """GET ${url} HTTP/1.1\r\nHOST: ${ip}\r\nAccept: ${acceptType}\r\n\r\n""",
+                    physicalgraph.device.Protocol.LAN, "${deviceNetworkId}")
+
+            log.trace "Requesting URL " + url + ", options: ${hubaction.options}"
+            return hubaction
+        } else {
+            return null
+        }
+    }
+    catch (Exception err) {
+        log.debug "error sending message: " + err
+    }
+    return null
+}
+
 def sendDiskstationCommand(Map commandData) {
     def hubaction = createHubAction(commandData, [:])
     if (hubaction) {
@@ -1091,14 +1126,15 @@ def webNotifyCallback() {
                     if (d) {
                         if (d.currentValue("motion") == "inactive" || (d.currentValue("motion") != "inactive" && state.lastMotion[cameraDNI] == null)) {
                         	log.trace "MotionCallback, motion detected on: " + d
+                            	state.lastMotion[cameraDNI] = now()
                         	d.motionActivated()
                         	if (d.currentValue("autoTake") == "on") {
                             	log.trace "MotionCallback, AutoTake is on. Taking image for: " + d
                             	d.take()
                         	}
-                            state.lastMotion[cameraDNI] = now()
                         	doAndScheduleHandleMotion()
                     	} else {
+                            	state.lastMotion[cameraDNI] = now()
                         	log.trace "MotionCallback, doing nothing. Motion event received for " + d + " which is already active."
                     	}
                     } else {
@@ -1119,9 +1155,9 @@ def doAndScheduleHandleMotion() {
 	runEvery5Minutes( "handleMotionCleanup" )
 }
 
-// Deactivate the cameras is the motion event is old.  Runs itself again in the least time left.
+// Deactivate the cameras if the motion event is old.  Runs itself again in the least time left.
 def handleMotionCleanup() {
-    log.debug "handleMotionCleanup"
+    log.debug "handleMotionCleanup called"
     def children = getChildDevices()
     def nextTimeDefault = 120000; //1000000
     def nextTime = nextTimeDefault;
@@ -1135,9 +1171,11 @@ def handleMotionCleanup() {
 
 	//log.debug "handleMotion nextTime = ${nextTime}"
 	if (nextTime != nextTimeDefault){
-    	log.trace "nextTime = " + nextTime
+    	log.trace "handleMotionCleanup nextTime = " + nextTime
         nextTime = (nextTime >= 25) ? nextTime : 25
 		runIn((nextTime+5).toInteger(), "handleMotionCleanup")
+    } else {
+    	log.trace "handleMotionCleanup done, will run one more time in 5min "
     }
 }
 
