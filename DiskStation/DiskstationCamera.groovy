@@ -235,7 +235,7 @@ def take() {
             hubAction = queueDiskstationCommand_Child("SYNO.SurveillanceStation.Camera", "GetSnapshot", "cameraId=${cameraId}", 1, [outputMsgToS3:true])
         }
         log.debug "take command is: ${hubAction}"
-        hubAction
+        return hubAction
 	} else {
     	parent.requestSnapshot(device.deviceNetworkId)
     }
