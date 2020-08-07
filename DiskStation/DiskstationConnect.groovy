@@ -289,6 +289,15 @@ def makeCameraModelKey(cameraInfo) {
     return makeCameraModelKey(vendor, model);
 }
 
+def getCameraIdFromCommandData(Map commandData) {
+    def cameraId = (commandData.params =~ /cameraId=([0-9]+)/) ? (commandData.params =~ /cameraId=([0-9]+)/)[0][1] : null
+    //if(cameraId) {
+    //    cameraId = cameraId.toInteger();
+    //}
+    
+    return cameraId;
+}
+
 def makeCameraModelKey(vendor, model) {
     return (vendor + "_" + model)
 }
@@ -515,7 +524,7 @@ def locationHandler(evt) {
                             }
                             break
                         case getUniqueCommand("SYNO.SurveillanceStation.Camera", "GetCapabilityByCamId"):
-                            def cameraId = (commandData.params =~ /cameraId=([0-9]+)/) ? (commandData.params =~ /cameraId=([0-9]+)/)[0][1] : null
+                            def cameraId = getCameraIdFromCommandData(commandData)
                             if (cameraId) {
                                 def camera = state.SSCameraList.find { it.id.toString() == cameraId.toString() }
                                 if (camera) {
@@ -528,11 +537,11 @@ def locationHandler(evt) {
                             }
                             break
                         case getUniqueCommand("SYNO.SurveillanceStation.PTZ", "ListPreset"):
-                            def cameraId = (commandData.params =~ /cameraId=([0-9]+)/) ? (commandData.params =~ /cameraId=([0-9]+)/)[0][1] : null
+                            def cameraId = getCameraIdFromCommandData(commandData)
                             if (cameraId) { state.cameraPresets[cameraId.toInteger()] = body.data?.presets }
                             break
                         case getUniqueCommand("SYNO.SurveillanceStation.PTZ", "ListPatrol"):
-                            def cameraId = (commandData.params =~ /cameraId=([0-9]+)/) ? (commandData.params =~ /cameraId=([0-9]+)/)[0][1] : null
+                            def cameraId = getCameraIdFromCommandData(commandData)
                             if (cameraId) { state.cameraPatrols[cameraId.toInteger()] = body.data?.patrols }
                             break
                         default:
@@ -586,11 +595,11 @@ def locationHandler(evt) {
                         handleErrors(commandData, null)
                         break
                     case getUniqueCommand("SYNO.SurveillanceStation.PTZ", "ListPreset"):
-                        def cameraId = (commandData.params =~ /cameraId=([0-9]+)/) ? (commandData.params =~ /cameraId=([0-9]+)/)[0][1] : null
+                        def cameraId = getCameraIdFromCommandData(commandData)
                         if (cameraId) { state.cameraPresets[cameraId.toInteger()] = null }
                         break
                     case getUniqueCommand("SYNO.SurveillanceStation.PTZ", "ListPatrol"):
-                        def cameraId = (commandData.params =~ /cameraId=([0-9]+)/) ? (commandData.params =~ /cameraId=([0-9]+)/)[0][1] : null
+                        def cameraId = getCameraIdFromCommandData(commandData)
                         if (cameraId) { state.cameraPatrols[cameraId.toInteger()] = null }
                         break
                     default:
@@ -829,25 +838,26 @@ private removeChildDevices(delete) {
 }
 
 def createCameraDNI(camera) {
+    // TODO: Convert to using IP:PORT (Do we need port?)
     return (camera.newName)
 }
 
 def addCameras() {
     selectedCameras.each { cameraIndex ->
         def newCamera = state.SSCameraList.find { it.id.toString() == cameraIndex.toString() }
-        log.trace "newCamera = " + newCamera
+        log.trace "addCameras: newCamera = " + newCamera
         if (newCamera != null) {
             def newCameraDNI = createCameraDNI(newCamera)
-            log.trace "newCameraDNI = " + newCameraDNI
+            log.trace "addCameras: newCameraDNI = " + newCameraDNI
             def d = getChildDevice(newCameraDNI)
             if(!d) {
                 d = addChildDevice("swanny", "Diskstation Camera", newCameraDNI, state.hub, [label:"Diskstation ${newCamera?.newName}"]) //, completedSetup: true
-                log.trace "created ${d.displayName} with id $newCameraDNI"
+                log.trace "addCameras: created ${d.displayName} with DNI $newCameraDNI"
 
                 // set up device capabilities here ??? TODO ???
                 //d.setModel(newPlayer?.value.model)
             } else {
-                log.trace "found ${d.displayName} with id $newCameraDNI already exists"
+                log.trace "addCameras: found ${d.displayName} with DNI $newCameraDNI already exists"
             }
 
             // set up even if already installed in case setup has changed
@@ -872,13 +882,13 @@ def createDiskstationURL(Map commandData) {
             def url = "/webapi/${apipath}?api=${commandData.api}&method=${commandData.command}&version=${commandData.version}${session}&${commandData.params}"
             return url
         } else {
-            log.trace "need a higher DS api version"
+            log.trace "createDiskstationURL: need a higher DS api version"
         }
 
     } else {
         // error!!!???
-        log.trace "Unable to send to api " + commandData.api
-        log.trace "Available APIs are " + state.api
+        log.trace "createDiskstationURL: Unable to send to api " + commandData.api
+        log.trace "createDiskstationURL: Available APIs are " + state.api
     }
     return null
 }
@@ -1082,6 +1092,7 @@ def imageNotifyCallback() {
         def bytes = new ByteArrayInputStream(snapshotBase64.decodeBase64())
         def cameraName = reqJSON.camera
         // log.debug ("Camera name: ${cameraName}")
+        // TODO: Change to getChildDeviceByCameraName
         def d = getChildDevice(cameraName)
         d.publishPostedImage(bytes)
     }
@@ -1224,75 +1235,75 @@ def getDSCameraIDbyName(String name) {
 }
 
 def getNumPresets(childDevice) {
-    def childId = getDSCameraIDbyChild(childDevice)
-    if ((childId != null) && (childId <= state.cameraPresets.size()) && state.cameraPresets[childId]) {
-        return state.cameraPresets[childId].size()
+    def cameraId = getDSCameraIDbyChild(childDevice)
+    if ((cameraId != null) && (cameraId <= state.cameraPresets.size()) && state.cameraPresets[cameraId]) {
+        return state.cameraPresets[cameraId].size()
     }
     return 0
 }
 
 
 def getPresetId(childDevice, index) {
-    def childId = getDSCameraIDbyChild(childDevice)
-    if ((childId != null) && (childId <= state.cameraPresets.size())) {
-        if (index <= state.cameraPresets[childId]?.size()) {
-            return state.cameraPresets[childId][index-1]?.id
+    def cameraId = getDSCameraIDbyChild(childDevice)
+    if ((cameraId != null) && (childId <= state.cameraPresets.size())) {
+        if (index <= state.cameraPresets[cameraId]?.size()) {
+            return state.cameraPresets[cameraId][index-1]?.id
         }
     }
     return null
 }
 
 def getPresetString(childDevice, index) {
-    def childId = getDSCameraIDbyChild(childDevice)
-    if ((childId != null) && (childId <= state.cameraPresets.size())) {
-        if ((index > 0) && (index <= state.cameraPresets[childId]?.size())) {
-            return state.cameraPresets[childId][index-1]?.newName
+    def cameraId = getDSCameraIDbyChild(childDevice)
+    if ((cameraId != null) && (cameraId <= state.cameraPresets.size())) {
+        if ((index > 0) && (index <= state.cameraPresets[cameraId]?.size())) {
+            return state.cameraPresets[cameraId][index-1]?.newName
         }
     }
     return "N/A"
 }
 
 def getPresetIdByString(childDevice, name) {
-    def childId = getDSCameraIDbyChild(childDevice)
-    if (state.cameraPresets[childId] != null) {
-        def preset = state.cameraPresets[childId].find { it.newName.toString().equalsIgnoreCase(name.toString()) }
+    def cameraId = getDSCameraIDbyChild(childDevice)
+    if (state.cameraPresets[cameraId] != null) {
+        def preset = state.cameraPresets[cameraId].find { it.newName.toString().equalsIgnoreCase(name.toString()) }
         return preset?.id
     }
     return null
 }
 
 def getNumPatrols(childDevice) {
-    def childId = getDSCameraIDbyChild(childDevice)
-    if ((childId != null) && (childId <= state.cameraPatrols.size()) && state.cameraPatrols[childId]) {
-        return state.cameraPatrols[childId].size()
+    def cameraId = getDSCameraIDbyChild(childDevice)
+    if ((cameraId != null) && (cameraId <= state.cameraPatrols.size()) && state.cameraPatrols[cameraId]) {
+        return state.cameraPatrols[cameraId].size()
     }
     return 0
 }
 
 def getPatrolId(childDevice, index) {
-    def childId = getDSCameraIDbyChild(childDevice)
-    if ((childId != null) && (childId <= state.cameraPatrols.size())) {
-        if (index <= state.cameraPatrols[childId]?.size()) {
-            return state.cameraPatrols[childId][index-1]?.id
+    def cameraId = getDSCameraIDbyChild(childDevice)
+    if ((cameraId != null) && (cameraId <= state.cameraPatrols.size())) {
+        if (index <= state.cameraPatrols[cameraId]?.size()) {
+            return state.cameraPatrols[cameraId][index-1]?.id
         }
     }
     return null
 }
 
 def getPatrolString(childDevice, index) {
-    def childId = getDSCameraIDbyChild(childDevice)
-    if ((childId != null) && (childId <= state.cameraPatrols.size())) {
-        if ((index > 0) && (index <= state.cameraPatrols[childId]?.size())) {
-            return state.cameraPatrols[childId][index-1]?.newName
+    def cameraId = getDSCameraIDbyChild(childDevice)
+    if ((cameraId != null) && (cameraId <= state.cameraPatrols.size())) {
+        if ((index > 0) && (index <= state.cameraPatrols[cameraId]?.size())) {
+            return state.cameraPatrols[cameraId][index-1]?.newName
         }
     }
     return "N/A"
 }
 
 def getPatrolIdByString(childDevice, name) {
-    def childId = getDSCameraIDbyChild(childDevice)
-    if (state.cameraPatrols[childId] != null) {
-        def patrol = state.cameraPatrols[childId].find { it.newName.toString().equalsIgnoreCase(name.toString()) }
+    def cameraId = getDSCameraIDbyChild(childDevice)
+    if (state.cameraPatrols[cameraId] != null) {
+        def patrol = state.cameraPatrols[cameraId].find { it.newName.toString().equalsIgnoreCase(name.toString()) }
         return patrol?.id
     }
     return null
